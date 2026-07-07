@@ -1,0 +1,27 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "mirror-and-mountain/meros-crm",
+    "version": "0.0.5",
+    "description": "CRM integrations package for Meros, currently Salesforce-focused.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "tmw-mm",
+            "email": "toby@mirrorandmountain.com"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-4": {
+            "MM\\Meros\\Crm\\": "src/"
+        }
+    },
+    "extra": {
+        "meros": {
+            "provider": "MM\\Meros\\Crm\\ServiceProvider"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
