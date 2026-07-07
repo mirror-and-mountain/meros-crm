@@ -1,7 +1,6 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
     "name": "mirror-and-mountain/meros-crm",
-    "version": "0.0.5",
     "description": "CRM integrations package for Meros, currently Salesforce-focused.",
     "type": "library",
     "license": "MIT",
