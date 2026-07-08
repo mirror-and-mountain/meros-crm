@@ -13,7 +13,9 @@
     "require": {},
     "autoload": {
         "psr-4": {
-            "MM\\Meros\\Crm\\": "src/"
+            "MM\\Meros\\Crm\\": "src/",
+            "MM\\Meros\\Crm\\App\\": "src/app/",
+            "MM\\Meros\\Crm\\Facades\\": "src/facades/"
         }
     },
     "extra": {

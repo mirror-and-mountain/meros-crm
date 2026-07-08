@@ -13,8 +13,6 @@ return new class extends Migration {
         SchemaManager::create('meros_crm_contacts', $installer, function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->nullable()->constrained('users')->cascadeOnDelete();
-            $table->string('first_name')->nullable();
-            $table->string('last_name')->nullable();
             $table->json('data')->nullable();
             $table->timestamps();
         });

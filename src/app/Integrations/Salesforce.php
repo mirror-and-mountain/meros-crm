@@ -1,6 +1,6 @@
 <?php
 
-namespace MM\Meros\Crm\Integrations;
+namespace MM\Meros\Crm\App\Integrations;
 
 use MM\Meros\Services\Contracts\Integration as IntegrationDefinition;
 
