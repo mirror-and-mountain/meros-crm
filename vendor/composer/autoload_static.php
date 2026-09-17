@@ -32,10 +32,14 @@ class ComposerStaticInitd4fdca119b0c464158e11fc54314b313
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
-        'MM\\Meros\\Crm\\App\\Integrations\\ExternalModels\\SalesforceContacts' => __DIR__ . '/../..' . '/src/app/Integrations/ExternalModels/SalesforceContacts.php',
+        'MM\\Meros\\Crm\\Accessor' => __DIR__ . '/../..' . '/src/Accessor.php',
+        'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjectFields' => __DIR__ . '/../..' . '/src/app/DynamicChoiceSources/SalesforceObjectFields.php',
+        'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjectRecords' => __DIR__ . '/../..' . '/src/app/DynamicChoiceSources/SalesforceObjectRecords.php',
+        'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjects' => __DIR__ . '/../..' . '/src/app/DynamicChoiceSources/SalesforceObjects.php',
+        'MM\\Meros\\Crm\\App\\Integrations\\ExternalModels\\SalesforceObjectRecords' => __DIR__ . '/../..' . '/src/app/Integrations/ExternalModels/SalesforceObjectRecords.php',
         'MM\\Meros\\Crm\\App\\Integrations\\Salesforce' => __DIR__ . '/../..' . '/src/app/Integrations/Salesforce.php',
         'MM\\Meros\\Crm\\App\\Models\\Contact' => __DIR__ . '/../..' . '/src/app/Models/Contact.php',
-        'MM\\Meros\\Crm\\Facades\\MerosCrm' => __DIR__ . '/../..' . '/src/facades/MerosCrm.php',
+        'MM\\Meros\\Crm\\Facades\\Salesforce' => __DIR__ . '/../..' . '/src/facades/Salesforce.php',
         'MM\\Meros\\Crm\\MerosCrm' => __DIR__ . '/../..' . '/src/MerosCrm.php',
         'MM\\Meros\\Crm\\ServiceProvider' => __DIR__ . '/../..' . '/src/ServiceProvider.php',
     );

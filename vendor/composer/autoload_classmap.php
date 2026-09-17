@@ -7,10 +7,14 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
-    'MM\\Meros\\Crm\\App\\Integrations\\ExternalModels\\SalesforceContacts' => $baseDir . '/src/app/Integrations/ExternalModels/SalesforceContacts.php',
+    'MM\\Meros\\Crm\\Accessor' => $baseDir . '/src/Accessor.php',
+    'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjectFields' => $baseDir . '/src/app/DynamicChoiceSources/SalesforceObjectFields.php',
+    'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjectRecords' => $baseDir . '/src/app/DynamicChoiceSources/SalesforceObjectRecords.php',
+    'MM\\Meros\\Crm\\App\\DynamicChoiceSources\\SalesforceObjects' => $baseDir . '/src/app/DynamicChoiceSources/SalesforceObjects.php',
+    'MM\\Meros\\Crm\\App\\Integrations\\ExternalModels\\SalesforceObjectRecords' => $baseDir . '/src/app/Integrations/ExternalModels/SalesforceObjectRecords.php',
     'MM\\Meros\\Crm\\App\\Integrations\\Salesforce' => $baseDir . '/src/app/Integrations/Salesforce.php',
     'MM\\Meros\\Crm\\App\\Models\\Contact' => $baseDir . '/src/app/Models/Contact.php',
-    'MM\\Meros\\Crm\\Facades\\MerosCrm' => $baseDir . '/src/facades/MerosCrm.php',
+    'MM\\Meros\\Crm\\Facades\\Salesforce' => $baseDir . '/src/facades/Salesforce.php',
     'MM\\Meros\\Crm\\MerosCrm' => $baseDir . '/src/MerosCrm.php',
     'MM\\Meros\\Crm\\ServiceProvider' => $baseDir . '/src/ServiceProvider.php',
 );
