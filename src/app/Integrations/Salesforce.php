@@ -5,13 +5,14 @@ namespace MM\Meros\Crm\App\Integrations;
 use Illuminate\Support\Str;
 
 use MM\Meros\Contracts\Features\Integrations\OAuthIntegration;
+use MM\Meros\Contracts\Features\Integrations\ResolvesLookupOptions;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesBaseUrl;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesClientId;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesClientSecret;
 
 use MM\Meros\App\Components\Fields\Repeater;
 
-class Salesforce extends OAuthIntegration {
+class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
     /**
      * The Salesforce API version currently being used by the integration.
      *
@@ -44,7 +45,7 @@ class Salesforce extends OAuthIntegration {
     // Initialisation
     // ===================================================================================
 
-    public function getInstance(): self {
+    public function getInstance(): static {
         return $this;
     }
 
@@ -120,9 +121,9 @@ class Salesforce extends OAuthIntegration {
      * @param string $method
      * @param array  $args
      *
-     * @return self
+     * @return static
      */
-    public function __call(string $method, array $args = []): self {
+    public function __call(string $method, array $args = []): static {
         $possibleObject = ucfirst(Str::singular($method));
 
         if (!$this->hasQueryableObject($possibleObject)) {
@@ -144,10 +145,10 @@ class Salesforce extends OAuthIntegration {
      * @param string $object
      * @param string $recordId
      *
-     * @return self
+     * @return static
      */
-    public function record(string $object, string $recordId): self {
-        $this->currentQuery['object'] = $object;
+    public function record(string $object, string $recordId): static {
+        $this->currentQuery['object'] = ucfirst(Str::singular($object));
         $this->currentQuery['recordId'] = $recordId;
         return $this;
     }
@@ -157,23 +158,35 @@ class Salesforce extends OAuthIntegration {
      *
      * @param string $object
      *
-     * @return self
+     * @return static
      */
-    public function records(string $object): self {
-        $this->currentQuery['object'] = $object;
+    public function records(string $object): static {
+        $this->currentQuery['object'] = ucfirst(Str::singular($object));
         return $this;
+    }
+
+    /**
+     * Returns a single record using the given object and record Id, if one exists.
+     *
+     * @param string $object
+     * @param string $recordId
+     *
+     * @return object|null
+     */
+    public function find(string $object, string $recordId): object|null {
+        return $this->record($object, $recordId)->get();
     }
 
     /**
      * Adds a where argument to the currentQuery.
      *
-     * @param string      $field
-     * @param mixed       $operator
-     * @param string|null $value
+     * @param string  $field
+     * @param mixed   $operator
+     * @param mixed   $value
      *
-     * @return self
+     * @return static
      */
-    public function where(string $field, mixed $operator, ?string $value = null): self {
+    public function where(string $field, mixed $operator, mixed $value = null): static {
         $args = func_get_args();
 
         if (count($args) === 2) {
@@ -190,9 +203,9 @@ class Salesforce extends OAuthIntegration {
      *
      * @param integer $limit
      *
-     * @return self
+     * @return static
      */
-    public function limit(int $limit): self {
+    public function limit(int $limit): static {
         $this->currentQuery['limit'] = $limit;
         return $this;
     }
@@ -201,17 +214,21 @@ class Salesforce extends OAuthIntegration {
      * Executes an HTTP request based on the currentQuery property, returning a single record if found, 
      * or an array of records if any are returned based on the configured query.
      * 
-     * @param bool $collect Whether to return the retrieved records as a collection (applicable only when the current query is looking for multiple records).
+     * @param bool|array $collect Whether to return the retrieved records as a collection (applicable only when the current query is looking for multiple records).
      *
      * @return object|array|null
      */
-    public function get(bool $collect = true): object|array|null {
+    public function get(bool|array $collect = true): object|array|null {
+        if (is_array($collect)) {
+            $collect = true;
+        }
+
         $possibleObject = $this->currentQuery['object'] ?? null;
         if ($possibleObject === null) {
             throw new \InvalidArgumentException('Object type must be specified before making a GET request.');
         }
 
-        $queryableObject = $this->getQueryableObject($possibleObject);  
+        $queryableObject = $this->getQueryableObject($possibleObject);
         if ($queryableObject === null) {
             throw new \InvalidArgumentException("The object of type {$possibleObject} is not set to be queryable.");
         }
@@ -382,7 +399,7 @@ class Salesforce extends OAuthIntegration {
         }
 
         $currentEnv = $this->getCurrentEnvironment();
-        $storedObjects = $this->settings->getItemValue('sf_queryable_objects_' . $currentEnv);
+        $storedObjects = $this->settings('', $refresh)->getItemValue('sf_queryable_objects_' . $currentEnv);
         $objects = [];
         
         foreach ($storedObjects as $value) {
@@ -430,11 +447,12 @@ class Salesforce extends OAuthIntegration {
      * Retrieves a single object from the queryable objects array, if it exists.
      *
      * @param string $objectName
+     * @param bool   $refresh
      *
      * @return array|null
      */
-    private function getQueryableObject(string $objectName): ?array {
-        $objects = $this->getQueryableObjects();
+    private function getQueryableObject(string $objectName, bool $refresh = false): ?array {
+        $objects = $this->getQueryableObjects($refresh);
 
         if (array_key_exists($objectName, $objects)) {
             return $objects[$objectName];
