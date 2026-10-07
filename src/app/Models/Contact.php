@@ -5,6 +5,8 @@ namespace MM\Meros\Crm\App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
+use MM\Meros\App\Models\User;
+
 class Contact extends Model {
     protected $table = 'meros_crm_contacts';
     protected $primaryKey = 'id';

@@ -15,7 +15,8 @@
         "psr-4": {
             "MM\\Meros\\Crm\\": "src/",
             "MM\\Meros\\Crm\\App\\": "src/app/",
-            "MM\\Meros\\Crm\\Facades\\": "src/facades/"
+            "MM\\Meros\\Crm\\Facades\\": "src/facades/",
+            "MM\\Meros\\Crm\\Concerns\\": "src/concerns/"
         }
     },
     "extra": {

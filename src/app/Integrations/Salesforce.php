@@ -3,12 +3,16 @@
 namespace MM\Meros\Crm\App\Integrations;
 
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 use MM\Meros\Contracts\Features\Integrations\OAuthIntegration;
 use MM\Meros\Contracts\Features\Integrations\ResolvesLookupOptions;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesBaseUrl;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesClientId;
 use MM\Meros\Contracts\Features\Integrations\Concerns\UsesClientSecret;
+
+use MM\Meros\Contracts\Features\Admin\Setting;
+use MM\Meros\Contracts\Features\Admin\SettingsContainer;
 
 use MM\Meros\App\Components\Fields\Repeater;
 
@@ -39,6 +43,13 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      */
     private array|null $queryableObjects = null;
 
+    /**
+     * An array of cached SF objects from the org associated with the current connection.
+     *
+     * @var array
+     */
+    private array $cachedObjects = [];
+
     use UsesBaseUrl, UsesClientId, UsesClientSecret;
 
     // ===================================================================================
@@ -57,6 +68,9 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
     }
 
     protected function configure(): void {
+        $this->usePKCE();
+        $this->useRefreshHeartbeat();
+
         $this->label('Meros Salesforce');
         $this->description('Integration with Salesforce CRM for syncing data and managing customer relationships.');
 
@@ -67,35 +81,112 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
 
         // Configure the client id setting
         $this->clientIdLabel = 'Salesforce Client ID';
-        $this->clientIdDescription = 'The client ID of your Salesforce connected app.';
+        $this->clientIdDescription = 'The Client ID provided by your Salesforce External Client App.';
 
         // Configure the client secret setting
         $this->clientSecretLabel = 'Salesforce Client Secret';
-        $this->clientSecretDescription = 'The client secret of your Salesforce connected app.';
+        $this->clientSecretDescription = 'The Client Secret provided by your Salesforce External Client App.';
     }
 
     protected function initCustomSettings(): void {
-        $this->settings()->add('object', function ($setting) {
+        $this->settings()->add('object', function (Setting $setting) {
             $setting->name('sf_queryable_objects');
             $setting->label('Queryable Objects');
+            $setting->description('List the objects you want to be queryable via this integration.');
+
+            $setting->onUpdate(function ($value, $oldValue, $itemName, $optionName) {
+                foreach($value as $key => $object) {
+                    if (!is_array($object) || !array_key_exists('sf_object_name', $object)) {
+                        continue;
+                    }
+
+                    $name = $object['sf_object_name'];
+                    $nickName = $object['sf_object_nickname'] ?? '';
+
+                    if (!empty($nickName)) {
+                        $value[$key]['sf_object_nickname'] = Str::snake(Str::replace('-', '_', $nickName));
+                    }
+
+                    $fieldsCache = array_key_exists($key, $oldValue) && array_key_exists('sf_fields_cache', $oldValue[$key])
+                        ? $oldValue[$key]['sf_fields_cache']
+                        : [];
+
+                    $updateFieldsCache = array_key_exists('sf_object_update_fields', $object)
+                        ? (bool) $object['sf_object_update_fields'] || $fieldsCache === []
+                        : $fieldsCache === [];
+
+                    $value[$key]['sf_object_update_fields'] = false;
+
+                    if (!$updateFieldsCache) {
+                        $value[$key]['sf_fields_cache'] = $fieldsCache;
+                        continue;
+                    }
+
+                    $sfObject = $this->getSingleObject($name);
+                    
+                    if (!is_array($sfObject) || !array_key_exists('fields', $sfObject)) {
+                        continue;
+                    }
+
+                    $fields = $sfObject['fields'];
+                    
+                    if (!is_array($fields)) {
+                        continue;
+                    }
+
+                    $fields = array_map(function ($field) {
+                        return array_intersect_key($field, array_flip([
+                            'name', 
+                            'label', 
+                            'type', 
+                            'nillable',
+                            'picklistValues',
+                            'updateable'
+                        ]));
+                    }, $fields);
+
+                    $value[$key]['sf_fields_cache'] = $fields;
+                }
+
+                return $value;
+                
+            });
+
             $setting->field('repeater', function (Repeater $repeater) {
                 $repeater->label('Queryable Objects');
                 $repeater->allowReorder(false);
+
                 $repeater->field('text', [])
                     ->name('sf_object_name')
                     ->description('The API name of the object exactly as it is shown in Salesforce.')
                     ->label('Object Name');
+
                 $repeater->field('text', [])
                     ->name('sf_object_nickname')
                     ->description('An optional nickname for the field which can be used in-place of the name.')
                     ->label('Object Nickname');
+
                 $repeater->field('text', [])
                     ->name('sf_object_fields')
                     ->label('Object Fields')
                     ->description('A comma-separated list of fields to return when the object is queried. Setting "All" will return all fields on the object.')
                     ->default('All');
+
+                $repeater->field('checkbox', [])
+                    ->name('sf_object_update_fields')
+                    ->label('Update Fields Cache')
+                    ->default(false);
             });
         });
+    }
+
+    /**
+     * Retrieve's the integration's settings container.
+     *
+     * @return SettingsContainer
+     */
+    public function getSettingsContainer(): SettingsContainer {
+        return $this->settings();
     }
 
     // ===================================================================================
@@ -108,6 +199,18 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
 
     protected function getTokenRequestEndpoint(): string {
         return '{base_url}/services/oauth2/token';
+    }
+
+    // ===================================================================================
+    // Token Refresh Flow
+    // ===================================================================================
+    
+    protected function shouldRefreshToken(string $errorTitle, string $errorMessage = '', ?int $errorCode = null): bool {
+        if ($errorTitle === 'INVALID_SESSION_ID') {
+            return true;
+        }
+
+        return false;
     }
 
     // ===================================================================================
@@ -136,6 +239,66 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
             $this->currentQuery['recordId'] = $args[0];
         }
 
+        return $this;
+    }
+
+    /**
+     * Sets the current query to retrieve a list of Salesforce objects.
+     *
+     * @return static
+     */
+    public function objects(): static {
+        $this->currentQuery['object'] = 'Object';
+        return $this;
+    }
+
+    /**
+     * Sets the current query to retrieve a list of queryable objects.
+     *
+     * @return static
+     */
+    public function queryableObjects(): static {
+        $this->currentQuery['object'] = 'QueryableObject';
+        return $this;
+    }
+
+    /**
+     * Sets the current query to retrieve a single object by its name.
+     *
+     * @param string $name
+     *
+     * @return static
+     */
+    public function object(string $name): static {
+        $name = ucfirst(Str::singular($name));
+        $this->currentQuery['object'] = 'Object';
+        $this->currentQuery['recordId'] = $name;
+        return $this;
+    }
+
+    /**
+     * Sets the current query to return a single queryable object, if it exists.
+     *
+     * @param string $objectName
+     *
+     * @return static
+     */
+    public function queryableObject(string $objectName): static {
+        $this->currentQuery['object'] = 'QueryableObject';
+        $this->currentQuery['recordId'] = $objectName;
+        return $this;
+    }
+
+    /**
+     * Returns a list of stored fields for the given queryable object.
+     *
+     * @param string $objectName
+     *
+     * @return static
+     */
+    public function objectFields(string $objectName): static {
+        $this->currentQuery['object'] = 'ObjectFields';
+        $this->currentQuery['recordId'] = $objectName;
         return $this;
     }
 
@@ -174,6 +337,19 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return object|null
      */
     public function find(string $object, string $recordId): object|null {
+        if ($object === 'Object') {
+            return $this->object($recordId)->get();
+        }
+
+        if ($object === 'QueryableObject' || $object === 'queryableObjects') {
+            $queryable = $this->getQueryableObject($recordId, true);
+            if (is_array($queryable)) {
+                return (object) $queryable;
+            } else {
+                return (object) [];
+            }
+        }
+
         return $this->record($object, $recordId)->get();
     }
 
@@ -228,18 +404,42 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
             throw new \InvalidArgumentException('Object type must be specified before making a GET request.');
         }
 
+        $recordId = $this->currentQuery['recordId'] ?? null;
+
+        if ($possibleObject === 'QueryableObject' && $recordId === null) {
+            $response = $this->getQueryableObjects(true);
+            return $collect ? collect($response) : $response;
+        } 
+        
+        else if ($possibleObject === 'QueryableObject' && is_string($recordId) && !empty($recordId)) {
+            $response = $this->getQueryableObject($recordId, true);
+            return $collect ? (object) $response : $response;
+        }
+
+        else if ($possibleObject === 'ObjectFields' && is_string($recordId) && !empty($recordId)) {
+            $object = $this->getQueryableObject($recordId, true);
+            if (is_array($object) && array_key_exists('fields_cache', $object) && is_array($object['fields_cache'])) {
+                return $collect ? collect($object['fields_cache']) : $object['fields_cache'];
+            } else {
+                return null;
+            }
+        }
+
         $queryableObject = $this->getQueryableObject($possibleObject);
         if ($queryableObject === null) {
             throw new \InvalidArgumentException("The object of type {$possibleObject} is not set to be queryable.");
         }
 
         $objectName = $queryableObject['name'];
-        $recordId   = $this->currentQuery['recordId'] ?? null;
         $fields     = $queryableObject['fields'];
         $response   = [];
 
         if ($recordId === null) {
-            $response = $this->getWithSOQL($objectName, $fields);
+            if ($objectName === 'Object') {
+                $response = $this->getObjects();
+            } else {
+                $response = $this->getWithSOQL($objectName, $fields);
+            }
 
             if (is_string($response)) {
                 $this->logError($response);
@@ -250,7 +450,10 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         }
 
         else {
-            $response = $this->getSingleRecord($objectName, $recordId, $fields);
+            $response = $objectName === 'Object' 
+                ? $this->getSingleObject($recordId)
+                : $this->getSingleRecord($objectName, $recordId, $fields);
+
             if (is_string($response)) {
                 $this->logError($response);
                 return null;
@@ -296,6 +499,68 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         }
 
         return null;
+    }
+
+    /**
+     * Retrieves a list of sf objects, optionally filtered using the current query.
+     *
+     * @return array|string
+     */
+    private function getObjects(): array|string {
+        $url = $this->buildRequestUrl("{base_url}/services/data/{$this->apiVersion}/sobjects");
+        $objects = $this->request($url, [], 'sobjects');
+
+        if (is_string($objects) || empty($this->currentQuery['wheres'])) {
+            return $objects;
+        }
+
+        $filteredObjects = collect($objects);
+
+        foreach ($this->currentQuery['wheres'] as $where) {
+            $operator = strtoupper($where['operator']);
+
+            if (in_array($operator, ['LIKE', 'NOT LIKE'], true)) {
+                $isNotLike = $operator === 'NOT LIKE';
+                $pattern = str_replace(
+                    ['%', '_'],
+                    ['.*', '.'],
+                    preg_quote((string) $where['value'], '/')
+                );
+
+                $filteredObjects = $filteredObjects->filter(function ($object) use ($where, $pattern, $isNotLike): bool {
+                    $value = data_get($object, $where['field']);
+
+                    if (!is_scalar($value) && !$value instanceof \Stringable) {
+                        return false;
+                    }
+
+                    $matches = preg_match('/^' . $pattern . '$/iu', (string) $value) === 1;
+                    return $isNotLike ? !$matches : $matches;
+                });
+
+                continue;
+            }
+
+            $filteredObjects = $filteredObjects->where(
+                $where['field'],
+                $where['operator'],
+                $where['value']
+            );
+        }
+
+        return $filteredObjects->values()->all();
+    }
+
+    /**
+     * Retrieves a single object if found.
+     *
+     * @param string $objectName
+     *
+     * @return array|string
+     */
+    private function getSingleObject(string $objectName): array|string {
+        $url = $this->buildRequestUrl("{base_url}/services/data/{$this->apiVersion}/sobjects/{$objectName}/describe");
+        return $this->request($url, []);
     }
 
     /**
@@ -348,8 +613,10 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         return "SELECT {$selectFields} FROM {$objectName}{$whereString} LIMIT {$limit}";
     }
 
+
     /**
-     * Makes a 'GET' HTTP request to Saleforce using the provided URL and payload.
+     * Attempts a HTTP GET request with the given url and payload, attempting to refresh the integration's
+     * access token if applicable.
      *
      * @param string $url
      * @param array  $payload
@@ -358,6 +625,28 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return array|string
      */
     private function request(string $url, array $payload, string $returnKey = ''): array|string {
+        $result = $this->attemptRequest($url, $payload, $returnKey);
+
+        if (is_string($result) && $this->shouldRefreshToken($result)) {
+            $newToken = $this->refreshToken();
+            if ($newToken !== null) {
+                $result = $this->attemptRequest($url, $payload, $returnKey);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Attempts a HTTP GET request with the given url and payload.
+     *
+     * @param string $url
+     * @param array  $payload
+     * @param string $returnKey
+     *
+     * @return array|string
+     */
+    private function attemptRequest(string $url, array $payload, string $returnKey = ''): array|string {
         $accessToken = $this->getAccessToken();
         if ($accessToken === null) {
             return 'Cannot locate access token for request.';
@@ -368,19 +657,46 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
             'url'     => $url,
             'payload' => $payload,
             'headers' => [
-                'Authorization' => "Bearer {$this->getAccessToken()}",
+                'Authorization' => "Bearer {$accessToken}",
                 'Accept'        => 'application/json',
             ],
         ]);
 
-       $decodedResponse = json_decode($response->getBody(), true);
-       $error = $this->checkForResponseError($decodedResponse);
+        $body = $response->getBody();
+        $decoded = json_decode($body, true);
 
-       if ($error !== null) {
+        // Guard against non-JSON / empty bodies (error pages, network garbage)
+        if (!is_array($decoded)) {
+            return !$response->successful()
+                ? 'Request failed. HTTP Status: ' . $response->status()
+                : 'Unexpected non-JSON response from Salesforce.';
+        }
+
+        $error = $this->checkForResponseError($decoded);
+        if ($error !== null) {
             return $error;
+        }
+
+        return !empty($returnKey) ? $decoded[$returnKey] ?? [] : $decoded;
+    }
+
+    /**
+     * Checks the given response array for possible error messages and returns the first error message found, if any.
+     *
+     * @param array $responseItems
+     *
+     * @return string|null
+     */
+    private function checkForResponseError(array $responseItems): ?string {
+        foreach ($responseItems as $value) {
+            if (is_array($value)) {
+                if (in_array('errorCode', array_keys($value))) {
+                    return $value['errorCode'];
+                }
+            }
        }
 
-       return !empty($returnKey) ? $decodedResponse[$returnKey] ?? [] : $decodedResponse;
+       return null;
     }
 
     // ===================================================================================
@@ -400,12 +716,18 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
 
         $currentEnv = $this->getCurrentEnvironment();
         $storedObjects = $this->settings('', $refresh)->getItemValue('sf_queryable_objects_' . $currentEnv);
+
+        if (!is_array($storedObjects)) {
+            return [];
+        }
+
         $objects = [];
         
         foreach ($storedObjects as $value) {
             $object         = $value['sf_object_name'] ?? null;
             $objectNickname = $value['sf_object_nickname'] ?? '';
             $fields         = $value['sf_object_fields'] ?? '';
+            $fieldsCache    = $value['sf_fields_cache'] ?? [];
 
             if ($object !== null) {
                 if ($fields === '') {
@@ -429,18 +751,22 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
                 }
 
                 $objects[$object] = [
-                    'name'     => $object,
-                    'nickname' => $objectNickname,
-                    'fields'   => $fields === 'All' ? 'All' : implode(',', $fields)
+                    'name'         => $object,
+                    'label'        => empty($objectNickname) ? $object : $objectNickname,
+                    'nickname'     => Str::snake(Str::replace('-', '_', $objectNickname)),
+                    'fields'       => $fields === 'All' ? 'All' : implode(',', $fields),
+                    'fields_cache' => $fieldsCache
                 ];
             }
         }
 
-        if ($objects === []) {
-            return ['Contact' => ['Id','Name'], 'Account' => ['Id','Name']];
-        }
-
-        return $objects;
+        return array_merge($objects, [
+            'Object' => [
+                'name'     => 'Object',
+                'nickname' => '',
+                'fields'   => 'All'
+            ]
+        ]);
     }
 
     /**
@@ -493,24 +819,5 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         }
 
         return false;
-    }
-
-    /**
-     * Checks the given response array for possible error messages and returns the first error message found, if any.
-     *
-     * @param array $responseItems
-     *
-     * @return string|null
-     */
-    private function checkForResponseError(array $responseItems): ?string {
-        foreach ($responseItems as $value) {
-            if (is_array($value)) {
-                if (in_array('errorCode', array_keys($value))) {
-                    return $value['errorCode'];
-                }
-            }
-       }
-
-       return null;
     }
 }
