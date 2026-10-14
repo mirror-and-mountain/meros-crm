@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Log;
 use MM\Meros\App\Package;
 use MM\Meros\Crm\App\Integrations\Salesforce as SalesforceIntegration;
 
+use MM\Meros\Crm\App\Components\Fields\SalesforceLookup;
+use MM\Meros\Crm\App\Components\FormActions\ExecuteSalesforceFlow;
+
 use MM\Meros\Contracts\Features\Admin\Setting;
 use MM\Meros\Contracts\Features\Content\PostType;
 
@@ -43,7 +46,9 @@ final class MerosCrm extends Package {
     public function configure(): void {
         $this->tables()->register();
         $this->integrations(SalesforceIntegration::class)->make();
-        // dd(Salesforce::participants()->get());
+        $this->fields()->register(SalesforceLookup::class, 'salesforce_lookup');
+        $this->formActions()->register(ExecuteSalesforceFlow::class, 'execute_salesforce_flow');
+        // dd(Salesforce::contacts()->get());
 
         $this->initSyncablePostTypes();
     }

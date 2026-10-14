@@ -3,7 +3,6 @@
 namespace MM\Meros\Crm\App\Integrations;
 
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 use MM\Meros\Contracts\Features\Integrations\OAuthIntegration;
 use MM\Meros\Contracts\Features\Integrations\ResolvesLookupOptions;
@@ -233,6 +232,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
             throw new \BadFunctionCallException('Method "' . $method . '" does not exist on ' . static::class . '.');
         }
 
+        $this->resetQuery();
         $this->currentQuery['object'] = $possibleObject;
 
         if (!empty($args) && is_string($args[0])) {
@@ -243,11 +243,26 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
     }
 
     /**
+     * Internal helper to reset the current query.
+     *
+     * @return void
+     */
+    private function resetQuery(): void {
+        $this->currentQuery = [
+            'object'   => null,
+            'recordId' => null,
+            'wheres'   => [],
+            'limit'    => 200
+        ];
+    }
+
+    /**
      * Sets the current query to retrieve a list of Salesforce objects.
      *
      * @return static
      */
     public function objects(): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = 'Object';
         return $this;
     }
@@ -258,6 +273,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function queryableObjects(): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = 'QueryableObject';
         return $this;
     }
@@ -270,6 +286,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function object(string $name): static {
+        $this->resetQuery();
         $name = ucfirst(Str::singular($name));
         $this->currentQuery['object'] = 'Object';
         $this->currentQuery['recordId'] = $name;
@@ -284,6 +301,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function queryableObject(string $objectName): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = 'QueryableObject';
         $this->currentQuery['recordId'] = $objectName;
         return $this;
@@ -297,6 +315,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function objectFields(string $objectName): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = 'ObjectFields';
         $this->currentQuery['recordId'] = $objectName;
         return $this;
@@ -311,6 +330,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function record(string $object, string $recordId): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = ucfirst(Str::singular($object));
         $this->currentQuery['recordId'] = $recordId;
         return $this;
@@ -324,7 +344,23 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return static
      */
     public function records(string $object): static {
+        $this->resetQuery();
         $this->currentQuery['object'] = ucfirst(Str::singular($object));
+        return $this;
+    }
+
+    /**
+     * Sets the current query to find or execute an auto-launched flow, if one is found
+     * using the given api name.
+     *
+     * @param string $apiName
+     *
+     * @return static
+     */
+    public function flow(string $apiName): static {
+        $this->resetQuery();
+        $this->currentQuery['object'] = 'Flow';
+        $this->currentQuery['recordId'] = $apiName;
         return $this;
     }
 
@@ -425,6 +461,15 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
             }
         }
 
+        else if ($possibleObject === 'Flow' && $recordId !== null) {
+            $response = $this->getFlow($recordId);
+            return $response === null ? null : ($collect ? (object) $response : $response);
+        }
+
+        else if ($possibleObject === 'Flow' && $recordId === null) {
+            throw new \InvalidArgumentException('A record id is required to retrieve a flow.');
+        }
+
         $queryableObject = $this->getQueryableObject($possibleObject);
         if ($queryableObject === null) {
             throw new \InvalidArgumentException("The object of type {$possibleObject} is not set to be queryable.");
@@ -499,6 +544,27 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         }
 
         return null;
+    }
+
+    /**
+     * Retrieves an Autolaunched flow from the org by its API name, if found.
+     *
+     * @param string $apiName
+     *
+     * @return array|null
+     */
+    private function getFlow(string $apiName): array|null {
+        $url = $this->buildRequestUrl(
+            "{base_url}/services/data/{$this->apiVersion}/actions/custom/flow/" . rawurlencode($apiName)
+        );
+        $flow = $this->request($url, []);
+
+        if (is_string($flow)) {
+            $this->logError($flow);
+            return null;
+        }
+
+        return $flow;
     }
 
     /**
@@ -767,6 +833,16 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
                 'fields'   => 'All'
             ]
         ]);
+    }
+
+    public function getQueryableObjectsList(): array {
+        return collect($this->getQueryableObjects())
+            ->where(function ($object) {
+                return $object['name'] !== 'Object';
+            })
+            ->keyBy('name')
+            ->mapWithKeys(fn ($object, $name) => [$name => $name])
+            ->all();
     }
 
     /**
