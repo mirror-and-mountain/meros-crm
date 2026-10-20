@@ -106,7 +106,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
                         $value[$key]['sf_object_nickname'] = Str::snake(Str::replace('-', '_', $nickName));
                     }
 
-                    $fieldsCache = array_key_exists($key, $oldValue) && array_key_exists('sf_fields_cache', $oldValue[$key])
+                    $fieldsCache = is_array($oldValue) && array_key_exists($key, $oldValue) && array_key_exists('sf_fields_cache', $oldValue[$key])
                         ? $oldValue[$key]['sf_fields_cache']
                         : [];
 
@@ -177,15 +177,74 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
                     ->default(false);
             });
         });
+
+        $this->settings()->add('object', function (Setting $setting) {
+            $setting->name('sf_runnable_flows');
+            $setting->label('Automated Flows');
+            $setting->description('List the automated flows you want to be runnable via this integration.');
+
+            $setting->onUpdate(function ($value, $oldValue, $itemName, $optionName) {
+                $getFlowData = function (string $type, int $flowKey, string $flowName, string $updateKey, string $cacheKey) use($value, $oldValue): array {
+                    $cache = is_array($oldValue) && array_key_exists($flowKey, $oldValue) && array_key_exists($cacheKey, $oldValue[$flowKey])
+                        ? $oldValue[$flowKey][$cacheKey]
+                        : [];
+
+                    $update = array_key_exists($updateKey, $value[$flowKey])
+                        ? (bool) $value[$flowKey][$updateKey] || $cache === []
+                        : $cache === [];
+
+                    if (!$update) {
+                        return $cache;
+                    }
+
+                    $flow = $this->flow($flowName)->get(false);
+
+                    if (!is_array($flow) || !array_key_exists($type, $flow) || !is_array($flow[$type])) {
+                        return [];
+                    }
+
+                    return $flow[$type];
+                };
+
+                foreach ($value as $key => $flowConfig) {
+                    if (!is_array($flowConfig) || !array_key_exists('sf_flow_name', $flowConfig)) {
+                        continue;
+                    }
+
+                    $flowName = $flowConfig['sf_flow_name'];
+
+                    $inputsCache  = $getFlowData('inputs', $key, $flowName, 'sf_flow_update_cache', 'sf_flow_inputs_cache');
+                    $outputsCache = $getFlowData('outputs', $key, $flowName, 'sf_flow_update_cache', 'sf_flow_outputs_cache');
+
+                    $value[$key]['sf_flow_inputs_cache'] = $inputsCache;
+                    $value[$key]['sf_flow_outputs_cache'] = $outputsCache;
+                    $value[$key]['sf_flow_update_cache'] = false;
+                }
+
+                return $value;
+            });
+
+            $setting->field('repeater', function (Repeater $repeater) {
+                $repeater->label('Automated Flows');
+                $repeater->allowReorder(false);
+
+                $repeater->field('text', [])
+                    ->name('sf_flow_name')
+                    ->description('The API name of the flow exactly as it is shown in Salesforce.')
+                    ->label('Flow API Name');
+
+                $repeater->field('checkbox', [])
+                    ->name('sf_flow_update_cache')
+                    ->label('Update Flow I/O Cache')
+                    ->default(false);
+            });
+        });
     }
 
-    /**
-     * Retrieve's the integration's settings container.
-     *
-     * @return SettingsContainer
-     */
-    public function getSettingsContainer(): SettingsContainer {
-        return $this->settings();
+    public function getRunnableFlows(bool $refresh = false): array {
+        $settingValue = $this->settings('sf_runnable_flows', $refresh);
+
+        return is_array($settingValue) ? $settingValue : [];
     }
 
     // ===================================================================================

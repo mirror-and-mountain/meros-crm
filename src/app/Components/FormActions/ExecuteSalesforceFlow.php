@@ -2,37 +2,20 @@
 
 namespace MM\Meros\Crm\App\Components\FormActions;
 
-use MM\Meros\Contracts\Features\Components\FormAction;
-use MM\Meros\Contracts\Features\Components\FieldGroup;
+use MM\Meros\Contracts\Features\Automation\FlowAction;
+use MM\Meros\Contracts\Features\Automation\FlowActionResponse;
 
-class ExecuteSalesforceFlow extends FormAction {
-    protected function configure(): void {
-        $this->name('execute_salesforce_action');
-        $this->label('Execute Salesforce Action');
-    }
+use Illuminate\Support\Facades\Log;
 
-    public static function getFormBuilderControls(
-        FieldGroup $controlGroup, 
-        array $rowData,
-        array $repeaterData,
-        array $formFields
-    ): FieldGroup {    
-        $controlGroup->field('text', [
-            'name'     => 'sf_flow_api_name',
-            'label'    => 'Flow API Name',
-            'required' => true
-        ]);
+class ExecuteSalesforceFlow extends FlowAction {
+    protected array $outputSchema = [
+        'flow_response' => [
+            'type' => 'integer'
+        ]
+    ];
 
-        $controlGroup->field('select', [
-            'name'    => 'field_test',
-            'label'   => 'Field Test',
-            'options' => $formFields
-        ]);
-
-        return $controlGroup;
-    }
-
-    public function handle(int $formId, array $configuration, array $submittedData): bool {
-        return true;
+    public function run(array $input): FlowActionResponse {
+        Log::info('input', $input);
+        return new FlowActionResponse($this, true);
     }
 }

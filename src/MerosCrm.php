@@ -4,19 +4,20 @@ namespace MM\Meros\Crm;
 
 use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 
 use MM\Meros\App\Package;
 use MM\Meros\Crm\App\Integrations\Salesforce as SalesforceIntegration;
 
 use MM\Meros\Crm\App\Components\Fields\SalesforceLookup;
-use MM\Meros\Crm\App\Components\FormActions\ExecuteSalesforceFlow;
+
+use MM\Meros\Crm\App\Components\FormActions\CreateContact;
 
 use MM\Meros\Contracts\Features\Admin\Setting;
 use MM\Meros\Contracts\Features\Content\PostType;
 
 use MM\Meros\Contracts\Features\Components\Form;
 use MM\Meros\Contracts\Features\Components\Field;
+use MM\Meros\Contracts\Features\Automation\FlowAction;
 
 use MM\Meros\App\Components\Fields\Lookup;
 use MM\Meros\App\Components\Fields\Repeater;
@@ -36,6 +37,8 @@ final class MerosCrm extends Package {
         $this->setAuthorUrl('https://meroscrm.com');
         $this->setSupportUrl('https://meroscrm.com/support');
         $this->setDescription('Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua');
+
+        $this->setPreference('livewire_namespace', 'MM\\Meros\\Crm\\App\\Livewire');
     }
 
     /**
@@ -45,12 +48,75 @@ final class MerosCrm extends Package {
      */
     public function configure(): void {
         $this->tables()->register();
-        $this->integrations(SalesforceIntegration::class)->make();
-        $this->fields()->register(SalesforceLookup::class, 'salesforce_lookup');
-        $this->formActions()->register(ExecuteSalesforceFlow::class, 'execute_salesforce_flow');
-        // dd(Salesforce::contacts()->get());
 
-        $this->initSyncablePostTypes();
+        $this->configureSettings();
+        $this->configureIntegrations();
+        $this->configureComponents();
+
+        // dd(Salesforce::contacts()->get());
+    }
+
+    private function configureSettings(): void {
+        $this->settings()->add('boolean', function (Setting $setting) {
+            $setting->name('meros_crm_use_portal');
+            $setting->label('Use Customer Portals');
+            $setting->description('Customer portals are a ...');
+            $setting->default(false);
+            $setting->field();
+        });
+    }
+
+    private function configureIntegrations(): void {
+        $this->integrations(SalesforceIntegration::class)->make();
+    }
+
+    private function configureComponents(): void {
+        $this->fields()->register(SalesforceLookup::class, 'salesforce_lookup');
+
+        $runnableFlows = Salesforce::getRunnableFlows();
+
+        if ($runnableFlows !== []) {            
+            foreach ($runnableFlows as $flow) {
+                $flowName = $flow['sf_flow_name'] ?? '';
+                if (empty($flowName)) {
+                    continue;
+                }
+
+                $flowInputs = $flow['sf_flow_inputs_cache'] ?? [];
+
+                $this->formActions()->make(function (FlowAction $action) use ($flowName, $flowInputs) {
+                    $flowName = Str::title(Str::replace('_', ' ',$flowName));
+                    $action->name('sf_run_flow' . $flowName);
+                    $action->label('Run Salesforce Flow: '. $flowName);
+                    $action->runner(function () {
+
+                    });
+
+                    foreach ($flowInputs as $input) {
+                        $name = $input['name'] ?? null;
+                        $type = $input['type'] ?? null;
+                        $required = $input['required'] ?? false;
+                        $label = $input['label'] ?? null;
+                        $description = $input['description'] ?? null;
+
+                        if ($name === null || $type === null) {
+                            continue;
+                        }
+
+                        $action->addInput(
+                            $name,
+                            $type,
+                            null,
+                            $label,
+                            $description,
+                            $required
+                        );
+                    }
+                });
+            }
+        }
+
+        $this->formActions()->register(CreateContact::class, 'create_contact');
     }
 
     private function initSyncablePostTypes(): void {

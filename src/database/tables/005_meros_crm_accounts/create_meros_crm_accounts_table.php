@@ -6,7 +6,7 @@ use MM\Meros\Contracts\Features\Data\TableCreator;
 return new class extends TableCreator {
 
     protected function configure(): void {
-        $this->required(true);
+        $this->required(false);
         $this->description('The meros_crm_accounts table stores CRM account information.');
         
         $this->define(function (Blueprint $table) {

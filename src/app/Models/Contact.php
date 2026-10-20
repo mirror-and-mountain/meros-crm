@@ -12,13 +12,14 @@ class Contact extends Model {
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'user_id',
         'first_name',
         'last_name',
+        'primary_email',
+        'user_id',
         'data',
     ];
 
-    protected array $casts = [
+    protected $casts = [
         'data' => 'array',
     ];
 

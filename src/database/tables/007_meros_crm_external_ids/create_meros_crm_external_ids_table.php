@@ -6,7 +6,7 @@ use MM\Meros\Contracts\Features\Data\TableCreator;
 return new class extends TableCreator {
 
     protected function configure(): void {
-        $this->required(true);
+        $this->required(false);
         $this->dependsOn('meros_crm_accounts');
         $this->dependsOn('meros_crm_contacts');
         $this->description('The meros_crm_external_ids table stores external IDs for CRM accounts and contacts.');
