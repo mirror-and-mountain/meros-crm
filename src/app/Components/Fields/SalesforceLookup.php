@@ -18,10 +18,27 @@ class SalesforceLookup extends Lookup {
      * @var boolean
      */
     protected static bool $showInFormBuilder = true;
+     
+    protected function configure(): void {
+        $this->clearFilters();
+        $this->model(Salesforce::class);
+        $this->key('Id');
+        
+        if (array_key_exists('filters', $this->passedProps) && is_array($this->passedProps['filters'])) {
+            $this->filters($this->passedProps['filters']);
+        }
+    }
 
-    public static function getBuilderControls(): ?FieldGroup {
-        $group = parent::getBuilderControls();
-
+    /**
+     * Adds builder controls specific to the Salesforce lookup field.
+     *
+     * @param FieldGroup $group
+     * @param boolean    $locked
+     * @param array      $rowData The data for the current row in the form builder.
+     *
+     * @return FieldGroup
+     */
+    protected static function addBuilderControls(FieldGroup $group,bool $locked = false, array $rowData = []): FieldGroup {
         $group->row(function ($row) {
             $row->field('select', [
                 'name'    => 'object',
@@ -67,15 +84,5 @@ class SalesforceLookup extends Lookup {
         ]);
 
         return $group;
-    }
-     
-    protected function configure(): void {
-        $this->clearFilters();
-        $this->model(Salesforce::class);
-        $this->key('Id');
-        
-        if (array_key_exists('filters', $this->passedProps) && is_array($this->passedProps['filters'])) {
-            $this->filters($this->passedProps['filters']);
-        }
     }
 }
