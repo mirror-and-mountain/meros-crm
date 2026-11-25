@@ -7,6 +7,9 @@ use MM\Meros\Crm\MerosCrm;
 use MM\Meros\Facades\Data\Integrations;
 use MM\Meros\Testing\PackageTestCase;
 
+/**
+ * Verifies that enabled CRM boot registers Salesforce and queue services and installs package tables.
+ */
 final class PackageBootTest extends PackageTestCase
 {
     protected function packageClass(): string { return MerosCrm::class; }

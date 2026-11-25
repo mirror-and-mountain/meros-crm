@@ -17,6 +17,8 @@ use RuntimeException;
 use WP_Error;
 
 /**
+ * Tests queue cron scheduling, opt-out cleanup, worker locking, bounded execution and failure handling.
+ *
  * @runTestsInSeparateProcesses
  * @preserveGlobalState disabled
  */

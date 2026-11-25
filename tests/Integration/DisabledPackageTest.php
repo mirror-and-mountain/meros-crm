@@ -7,6 +7,9 @@ use MM\Meros\Crm\MerosCrm;
 use MM\Meros\Facades\Data\Integrations;
 use MM\Meros\Testing\PackageTestCase;
 
+/**
+ * Verifies that a disabled CRM package is discovered without configuring its services.
+ */
 final class DisabledPackageTest extends PackageTestCase
 {
     protected function packageClass(): string { return MerosCrm::class; }

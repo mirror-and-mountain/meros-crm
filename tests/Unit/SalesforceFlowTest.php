@@ -36,6 +36,8 @@ use RuntimeException;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Tests Salesforce record operations, flow invocation, queued persistence and form action integration.
+ *
  * @runTestsInSeparateProcesses
  * @preserveGlobalState disabled
  */

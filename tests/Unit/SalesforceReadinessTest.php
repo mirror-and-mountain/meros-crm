@@ -12,6 +12,8 @@ use ReflectionMethod;
 use ReflectionProperty;
 
 /**
+ * Tests rejection and logging of disabled Salesforce requests and missing-token failure behavior.
+ *
  * @runTestsInSeparateProcesses
  * @preserveGlobalState disabled
  */
