@@ -6,31 +6,14 @@ A Salesforce-focused CRM package for the Meros framework.
 
 This package owns Salesforce-specific integrations, external models, and form actions.
 
-## Microsoft 365 email draft
+## Salesforce readiness
 
-`Microsoft365` is an opt-in integration draft; register it in the package before use:
-
-```php
-use MM\Meros\Crm\App\Integrations\Microsoft365;
-
-$this->integrations(Microsoft365::class)->make();
-```
-
-In Microsoft Entra, register a web application for the tenant, add the integration's
-Return URL as a web redirect URI, and grant the delegated Microsoft Graph `Mail.Send`
-permission. Configure the tenant ID, client ID and client secret in Meros, enable the
-integration, and connect the mailbox that should send messages. Admin consent may be
-required by your organization. The connection is shared across Meros users.
-
-Once registered and connected, use the integration through the container:
-
-```php
-app(Microsoft365::class)->sendMail(['recipient@example.com'], 'Hello', 'Message body');
-```
-
-Pass `true` as the fourth argument for an HTML body. Graph's `202 Accepted` response
-means the message was accepted for processing, not that it was delivered. This draft
-does not replace WordPress mail or include attachments, CC or BCC.
+Use `Integrations::connect('salesforce')->ready()` to check whether Salesforce is
+enabled and has a connected account and access token in the current environment.
+API requests also enforce this check when using the Salesforce facade directly.
+The former `checkEnabled` argument to `get()` and `first()` is no longer supported;
+disabled integrations cannot make Salesforce requests. Readiness does not verify
+the connection with Salesforce.
 
 ## Salesforce record writes
 

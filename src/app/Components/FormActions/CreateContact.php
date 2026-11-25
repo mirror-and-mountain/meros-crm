@@ -20,9 +20,10 @@ final class CreateContact extends FlowAction {
             'required' => true
         ],
         'contact_email' => [
-            'label'    => "The contact's email address",
-            'type'     => 'string',
-            'required' => true
+            'label'      => "The contact's email address",
+            'type'       => 'string',
+            'field_type' => 'email',
+            'required'   => true
         ]
     ];
 

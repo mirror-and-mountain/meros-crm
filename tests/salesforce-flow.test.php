@@ -60,6 +60,10 @@ function remove_filter(string $hook, Closure $callback, int $priority = 10): voi
 }
 
 function get_option(string $name, mixed $default = false): mixed {
+    if (isset($GLOBALS['enabledOptions'][$name])) {
+        return ['test_salesforce_enabled' => $GLOBALS['enabledOptions'][$name]];
+    }
+
     return [
         'base_url_default' => 'https://example.my.salesforce.com',
         'sf_queryable_objects_default' => [
@@ -108,6 +112,13 @@ class FlowTestSettings extends SettingsContainer {
     }
 }
 
+class FlowTestEnableSettings extends SettingsContainer {
+    public function initialiseForTest(string $name): void {
+        $this->identifier('name', 'snake');
+        $this->name = $name;
+    }
+}
+
 class FlowTestHttpClient extends HttpClient {
     public array $requests = [];
     public array $responses = [];
@@ -121,6 +132,7 @@ class FlowTestHttpClient extends HttpClient {
 
 class FlowTestSalesforce extends Salesforce {
     public FlowTestHttpClient $client;
+    public string $enableSettingName;
     public ?string $token = 'old-token';
     public ?string $refreshedToken = 'new-token';
     public int $refreshes = 0;
@@ -174,6 +186,13 @@ function integration(array $responses): FlowTestSalesforce {
     $settings->initialiseForTest();
     $integration = (new ReflectionClass(FlowTestSalesforce::class))->newInstanceWithoutConstructor();
     (new ReflectionProperty(Integration::class, 'settings'))->setValue($integration, $settings);
+    $enableSettings = (new ReflectionClass(FlowTestEnableSettings::class))->newInstanceWithoutConstructor();
+    $integration->enableSettingName = 'salesforce_enabled_' . spl_object_id($enableSettings);
+    $enableSettings->initialiseForTest($integration->enableSettingName);
+    $GLOBALS['enabledOptions'][$integration->enableSettingName] = true;
+    (new ReflectionProperty(Integration::class, 'merosSettings'))->setValue($integration, $enableSettings);
+    (new ReflectionMethod(Integration::class, 'identifier'))->invoke($integration, 'name', 'snake');
+    (new ReflectionProperty(Integration::class, 'name'))->setValue($integration, 'test_salesforce');
     (new ReflectionProperty(Integration::class, 'enabled'))->setValue($integration, true);
     $integration->client = new FlowTestHttpClient();
     $integration->client->responses = $responses;
@@ -269,7 +288,7 @@ foreach ([
 }
 
 $integration = integration([]);
-(new ReflectionProperty(Integration::class, 'enabled'))->setValue($integration, false);
+$GLOBALS['enabledOptions'][$integration->enableSettingName] = false;
 check($integration->contacts()->create($recordData) === null && !$integration->contacts($recordId)->update($recordData), 'Disabled integrations must not write records.');
 check($integration->client->requests === [], 'Disabled writes must not contact Salesforce.');
 
@@ -413,7 +432,7 @@ $unavailable->flow = null;
 expectFailure(fn () => $job->handle($unavailable), 'no longer configured');
 check($unavailable->client->requests === [], 'A removed flow must not be invoked by the worker.');
 $disconnected = integration([]);
-(new ReflectionProperty(Integration::class, 'enabled'))->setValue($disconnected, false);
+$GLOBALS['enabledOptions'][$disconnected->enableSettingName] = false;
 expectFailure(fn () => $job->handle($disconnected), 'no active connection');
 check($disconnected->client->requests === [], 'A disabled integration must not be invoked by the worker.');
 

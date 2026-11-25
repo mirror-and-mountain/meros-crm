@@ -564,12 +564,12 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * or an array of records if any are returned based on the configured query.
      * 
      * @param bool|array $collect Whether to return the retrieved records as a collection (applicable only when the current query is looking for multiple records).
-     * @param bool $checkEnabled Whether to check if the integration is enabled before executing the query. Defaults to true.
      *
      * @return object|array|null
      */
-    public function get(bool|array $collect = true, bool $checkEnabled = true): object|array|null {
-        if ($this->hasActiveConnection($checkEnabled) === false) {
+    public function get(bool|array $collect = true): object|array|null {
+        if (!$this->ready()) {
+            $this->logError('Salesforce integration not ready', 'Salesforce is disabled or has no usable connection.');
             return null;
         }
 
@@ -661,12 +661,12 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * Returns the first record found with the currentQuery, if any.
      * 
      * @param bool $asObject Whether to return the record as an object. Defaults to true.
-     * @param bool $checkEnabled Whether to check if the integration is enabled before executing the query. Defaults to true.
      *
      * @return object|array|null
      */
-    public function first(bool $asObject = true, bool $checkEnabled = true): object|array|null {
-        if ($this->hasActiveConnection($checkEnabled) === false) {
+    public function first(bool $asObject = true): object|array|null {
+        if (!$this->ready()) {
+            $this->logError('Salesforce integration not ready', 'Salesforce is disabled or has no usable connection.');
             return null;
         }
 
@@ -864,7 +864,8 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return array|null
      */
     private function writeRecord(array $data, string $method): ?array {
-        if (!$this->hasActiveConnection()) {
+        if (!$this->ready()) {
+            $this->logError('Salesforce integration not ready', 'Salesforce is disabled or has no usable connection.');
             return null;
         }
 
@@ -932,7 +933,13 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return array|string|null The parsed action result, a queued acknowledgement, or null if invocation failed.
      */
     public function invokeFlow(string $flowName, array $inputs, bool $awaitResponse = true): array|string|null {
-        if ($this->hasActiveConnection() === false) {
+        if (!$this->ready()) {
+            if ($this->isEnabled() && $this->hasActiveConnection() && !$this->getAccessToken()) {
+                $message = 'Cannot locate access token for request.';
+                $this->logError($message);
+                return $message;
+            }
+            $this->logError('Salesforce integration not ready', 'Salesforce is disabled or has no usable connection.');
             return null;
         }
 
@@ -980,7 +987,7 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @throws \RuntimeException If the flow cannot be run or fails during execution.
      */
     public function runQueuedFlow(string $flowName, array $preparedInputs): void {
-        if (!$this->hasActiveConnection()) {
+        if (!$this->ready()) {
             throw new \RuntimeException('The queued Salesforce flow has no active connection.');
         }
 
@@ -1186,6 +1193,12 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
      * @return array|string
      */
     private function request(string $url, array $payload, string $method = 'GET', string $returnKey = ''): array|string {
+        if (!$this->ready()) {
+            $message = 'Salesforce is disabled or has no usable connection.';
+            $this->logError('Salesforce integration not ready', $message);
+            return $message;
+        }
+
         $result = $this->attemptRequest($url, $payload, $method, $returnKey);
 
         if (is_string($result) && $this->shouldRefreshToken($result)) {
