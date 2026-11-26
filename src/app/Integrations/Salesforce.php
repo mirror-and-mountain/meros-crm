@@ -90,6 +90,16 @@ class Salesforce extends OAuthIntegration implements ResolvesLookupOptions {
         $this->clientSecretDescription = 'The Client Secret provided by your Salesforce External Client App.';
     }
 
+    /**
+     * Returns the list of settings that are managed in wp admin regardless of whether
+     * the integration is configured in the theme's config file or not.
+     *
+     * @return array
+     */
+    protected function adminManagedSettings(): array {
+        return ['sf_queryable_objects', 'sf_invokable_flows'];
+    }
+
     protected function initCustomSettings(): void {
         /**
          * Adds a setting for configuring queryable Salesforce objects.

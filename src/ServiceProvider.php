@@ -17,6 +17,14 @@ class ServiceProvider extends PackageServiceProvider {
     }
 
     protected function beforeBoot(): void {
+        $configPath = dirname(__DIR__) . '/config';
+        $this->publishesConfig($configPath, 'meros-crm-');
+        $this->mergePackageConfig(
+            $configPath . '/integrations.php',
+            'integrations',
+            'meros-crm-integrations.php'
+        );
+
         $this->configurePortalAuthProvider();
         $this->configureQueue();
         $this->configureQueueCron();

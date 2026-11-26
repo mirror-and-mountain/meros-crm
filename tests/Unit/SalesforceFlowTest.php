@@ -8,10 +8,16 @@ use Illuminate\Container\Container;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Queue;
+use MM\Meros\App\Components\Fields\Repeater;
+use MM\Meros\Contracts\Feature;
+use MM\Meros\Contracts\Features\Admin\Setting;
 use MM\Meros\Contracts\Features\Admin\SettingsContainer;
 use MM\Meros\Contracts\Features\Automation\FlowAction;
 use MM\Meros\Contracts\Features\Automation\FlowActionResponse;
+use MM\Meros\Contracts\Features\Components\Field;
 use MM\Meros\Contracts\Features\Components\FieldRow;
+use MM\Meros\Contracts\Features\Data\DataContainer;
+use MM\Meros\Contracts\Features\Data\DataItem;
 use MM\Meros\Contracts\Features\Integrations\Integration;
 use MM\Meros\Contracts\Providers\FeatureProvider;
 use MM\Meros\Crm\App\Components\Orchestrator;
@@ -44,6 +50,63 @@ use PHPUnit\Framework\TestCase;
 class SalesforceFlowTest extends TestCase {
     protected function setUp(): void {
         require_once dirname(__DIR__) . '/Support/SalesforceFlowTestFixtures.php';
+    }
+
+    public function testSalesforceRepeatersRemainAdminManagedEvenWithLegacyConfig(): void {
+        $container = new Container();
+        Container::setInstance($container);
+        Facade::setFacadeApplication($container);
+        $legacy = [
+            'allow_configuration' => false,
+            'sf_queryable_objects' => ['Account', 'Contact'],
+            'sf_invokable_flows' => [['sf_flow_name' => 'ConfiguredFlow']],
+        ];
+        $container->instance('config', new Repository([
+            'integrations' => [
+                'meros_crm_salesforce' => [
+                    'environments' => ['production' => $legacy, 'sandbox' => $legacy],
+                ],
+            ],
+        ]));
+
+        $integration = (new ReflectionClass(Salesforce::class))->newInstanceWithoutConstructor();
+        (new ReflectionMethod(Feature::class, 'identifier'))->invoke($integration, 'name', 'snake');
+        (new ReflectionProperty(Integration::class, 'name'))->setValue($integration, 'meros_crm_salesforce');
+        $settings = (new ReflectionClass(\FlowTestSettings::class))->newInstanceWithoutConstructor();
+        $settings->initialiseForTest();
+        (new ReflectionProperty(Integration::class, 'settings'))->setValue($integration, $settings);
+        $saved = [];
+
+        foreach (['production', 'sandbox'] as $environment) {
+            foreach (['sf_queryable_objects', 'sf_invokable_flows'] as $name) {
+                $key = $name . '_' . $environment;
+                $saved[$key] = [['saved' => $key]];
+                $setting = (new ReflectionClass(Setting::class))->newInstanceWithoutConstructor();
+                (new ReflectionMethod(Feature::class, 'identifier'))->invoke($setting, 'name', 'snake');
+                $setting->name($key);
+                $field = (new ReflectionClass(Repeater::class))->newInstanceWithoutConstructor();
+                $field->handle = 'repeater';
+                (new ReflectionProperty(Field::class, 'dataType'))->setValue($field, 'array.object');
+                (new ReflectionProperty(DataItem::class, 'field'))->setValue($setting, $field);
+
+                (new ReflectionMethod(Integration::class, 'configureSettingFromConfig'))
+                    ->invoke($integration, $setting, $name, $environment);
+
+                self::assertNull($setting->getDefault());
+                self::assertFalse($field->isReadonly());
+            }
+        }
+
+        (new ReflectionProperty(DataContainer::class, 'cachedValue'))->setValue($settings, $saved);
+        foreach ($saved as $key => $value) {
+            self::assertSame($value, $settings->getItemValue($key));
+        }
+
+        $defaults = require dirname(__DIR__, 2) . '/config/integrations.php';
+        foreach ($defaults['meros_crm_salesforce']['environments'] as $environment) {
+            self::assertArrayNotHasKey('sf_queryable_objects', $environment);
+            self::assertArrayNotHasKey('sf_invokable_flows', $environment);
+        }
     }
 
     public function testSalesforceRecordWritesAndQueries(): void {
