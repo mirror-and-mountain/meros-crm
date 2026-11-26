@@ -20,8 +20,6 @@ final class MerosCrm extends Package {
         $this->setAuthorUrl('https://meroscrm.com');
         $this->setSupportUrl('https://meroscrm.com/support');
         $this->setDescription('Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua');
-
-        $this->setPreference('livewire_namespace', 'MM\\Meros\\Crm\\App\\Livewire');
     }
 
     public function configure(): void {

@@ -5,9 +5,9 @@ namespace MM\Meros\Crm;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+
 use MM\Meros\App\Providers\PackageServiceProvider;
 use MM\Meros\Crm\App\Jobs\InvokeSalesforceFlow;
-use MM\Meros\Crm\App\Models\PortalUser;
 
 class ServiceProvider extends PackageServiceProvider {
     private const QUEUE_CRON_HOOK = 'meros_crm_process_queue';
@@ -25,7 +25,6 @@ class ServiceProvider extends PackageServiceProvider {
             'meros-crm-integrations.php'
         );
 
-        $this->configurePortalAuthProvider();
         $this->configureQueue();
         $this->configureQueueCron();
     }
@@ -130,35 +129,5 @@ class ServiceProvider extends PackageServiceProvider {
                 Log::error('Unable to release the Meros CRM queue lock.', ['error' => $wpdb->last_error]);
             }
         }
-    }
-
-    /**
-     * Configures the portal authentication provider.
-     *
-     * @return void
-     */
-    private function configurePortalAuthProvider(): void {
-        config([
-            'auth.defaults.guard' => 'portal',
-
-            'auth.guards.portal' => [
-                'driver'   => 'session',
-                'provider' => 'portals',
-            ],
-            'auth.providers.portals' => [
-                'driver' => 'eloquent',
-                'model'  => PortalUser::class,
-            ],
-
-            'auth.passwords.portal_users' => [
-                'provider' => 'portals',
-                'table'    => 'meros_crm_portal_password_reset_tokens',
-                'expire'   => 60,
-                'throttle' => 60,
-            ],
-
-            'session.driver' => 'database',
-            'session.table'  => 'meros_crm_portal_sessions',
-        ]);
     }
 }
